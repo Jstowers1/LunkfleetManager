@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  /* Overrides the default font-sans utility to use your local Arch fonts */
+  --font-sans: "JetBrainsMono Nerd Font", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Base styles */
+body {
+  @apply bg-gray-900 text-gray-200 antialiased;
+}
+
+/* Sleek, minimalist custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-700 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
