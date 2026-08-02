@@ -5,7 +5,7 @@
 set -e
 
 VPS_HOST="<TAILSCALE_IP>"
-REMOTE_DIR="/home/lunkman/Documents/LunkserverManager/satellite-backend"
+REMOTE_DIR="/home/<USER>/Documents/LunkfleetManager/satellite-backend"
 
 echo "🚀 Deploying LunkServer Satellite Backend to LunkVPS..."
 
@@ -21,13 +21,13 @@ rsync -avz --delete \
     ./ \
     root@$VPS_HOST:$REMOTE_DIR/
 
-#Create venv as lunkman, install deps, install and restart systemd service
+#Create venv as <USER>, install deps, install and restart systemd service
 ssh root@$VPS_HOST bash -s << EOF
 set -e
 cd $REMOTE_DIR
-sudo -u lunkman python3 -m venv .venv
-sudo -u lunkman .venv/bin/pip install --upgrade pip
-sudo -u lunkman .venv/bin/pip install -r requirements.txt
+sudo -u <USER> python3 -m venv .venv
+sudo -u <USER> .venv/bin/pip install --upgrade pip
+sudo -u <USER> .venv/bin/pip install -r requirements.txt
 cp satellite.service /etc/systemd/system/satellite.service
 systemctl daemon-reload
 systemctl restart satellite

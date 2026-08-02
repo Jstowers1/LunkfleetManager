@@ -1,4 +1,4 @@
-"""Unit tests for LunkserverManager backend logic.
+"""Unit tests for LunkfleetManager backend logic.
 
 Tests backup file operations, JSON validation, recipe integrity, and
 get_all_statuses status mapping — without a running docker daemon.
@@ -172,7 +172,7 @@ class TestStatusMapping:
         monkeypatch.setattr("httpx.get", lambda *a, **kw: (_ for _ in ()).throw(Exception("down")))
         statuses = fake_dm.get_all_statuses(
             ["satellite_01"],
-            recipes={"satellite_01": {"remote_host": f"ssh://lunkman@{dm_mod.SATELLITE_IP}:22"}}
+            recipes={"satellite_01": {"remote_host": f"ssh://<USER>@{dm_mod.SATELLITE_IP}:22"}}
         )
         assert statuses["satellite_01"] == "unknown"
 

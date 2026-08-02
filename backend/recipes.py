@@ -933,7 +933,7 @@ SERVER_RECIPES = {
         "ram_limit": "4g",
         "description": "LUNKFLIX FOREVER!!!",
         "extra_volumes": {
-            "/home/lunkman/Documents/shared_sportyfin_data": {"bind": "/sportyfin-data", "mode": "ro"}
+            "/home/<USER>/Documents/shared_sportyfin_data": {"bind": "/sportyfin-data", "mode": "ro"}
         },
         "devices": [
             "/dev/dri:/dev/dri"
@@ -968,7 +968,7 @@ SERVER_RECIPES = {
         "game_type": "utility",
         "image": "ghcr.io/mostlygeek/llama-swap:vulkan",
         "ports": {"8080/tcp": 8080},
-        "remote_host": "ssh://lunkman@<TAILSCALE_IP>",
+        "remote_host": "ssh://<USER>@<TAILSCALE_IP>",
         "alias": "Lunkserver 3.0",
         "description": "Actual container running the LunkLLMs"
     },
@@ -1125,7 +1125,7 @@ SERVER_RECIPES = {
         "client_port": 80,
         "container_path": "/opt/adguardhome/conf",
         "extra_volumes": {
-            "/home/lunkman/Documents/server_data/adguardhome/work": {"bind": "/opt/adguardhome/work", "mode": "rw"}
+            "/home/<USER>/Documents/server_data/adguardhome/work": {"bind": "/opt/adguardhome/work", "mode": "rw"}
         },
         "command_template": "echo 'AdGuard Home is managed via the Web UI (port 80 or 3000 for initial setup)'",
         "env": {
@@ -1146,12 +1146,12 @@ SERVER_RECIPES = {
         "image": "odysseus:local",
         "ports": {"7000/tcp": 7000},
         "client_port": 7000,
-        "remote_host": "ssh://lunkman@<TAILSCALE_IP>",
+        "remote_host": "ssh://<USER>@<TAILSCALE_IP>",
         "alias": "Lunkserver 3.0",
         "description": "LunkAI Frontend",
         "ram_limit": "8g",
         "group": "odysseyus-stack",
-        "compose_file": "/home/lunkman/Documents/odysseus/docker-compose.yml"
+        "compose_file": "/home/<USER>/Documents/odysseus/docker-compose.yml"
     },
 
     "chromadb": {
@@ -1160,11 +1160,11 @@ SERVER_RECIPES = {
         "image": "chromadb/chroma:latest",
         "ports": {"8100/tcp": 8100},
         "client_port": 8100,
-        "remote_host": "ssh://lunkman@<TAILSCALE_IP>",
+        "remote_host": "ssh://<USER>@<TAILSCALE_IP>",
         "alias": "Lunkserver 3.0",
         "description": "LunkAI database",
         "group": "odysseyus-stack",
-        "compose_file": "/home/lunkman/Documents/odysseus/docker-compose.yml"
+        "compose_file": "/home/<USER>/Documents/odysseus/docker-compose.yml"
     },
 
     "searxng": {
@@ -1173,11 +1173,11 @@ SERVER_RECIPES = {
         "image": "searxng/searxng:2026.5.31-7159b8aed",
         "ports": {"8080/tcp": 8081},
         "client_port": 8081,
-        "remote_host": "ssh://lunkman@<TAILSCALE_IP>",
+        "remote_host": "ssh://<USER>@<TAILSCALE_IP>",
         "alias": "Lunkserver 3.0",
         "description": "LunkAI search engine",
         "group": "odysseyus-stack",
-        "compose_file": "/home/lunkman/Documents/odysseus/docker-compose.yml"
+        "compose_file": "/home/<USER>/Documents/odysseus/docker-compose.yml"
     },
 
     "ntfy": {
@@ -1186,12 +1186,12 @@ SERVER_RECIPES = {
         "image": "binwiederhier/ntfy",
         "ports": {"8091/tcp": 8091},
         "client_port": 8091,
-        "remote_host": "ssh://lunkman@<TAILSCALE_IP>",
+        "remote_host": "ssh://<USER>@<TAILSCALE_IP>",
         "alias": "Lunkserver 3.0",
         "description": "LunkAI notification system",
         "command_template": "echo 'NTfy runs via `ntfy serve` in the compose stack'",
         "group": "odysseyus-stack",
-        "compose_file": "/home/lunkman/Documents/odysseus/docker-compose.yml"
+        "compose_file": "/home/<USER>/Documents/odysseus/docker-compose.yml"
     },
 
     "lunkbot": {
@@ -1201,8 +1201,8 @@ SERVER_RECIPES = {
         "ports": {},
         "container_path": "/data",
         "extra_volumes": {
-            "/home/lunkman/Documents/server_data/jellyfin": {"bind": "/jellyfin", "mode": "ro"},
-            "/home/lunkman/Documents/LunkserverDiscordBot/.env": {"bind": "/app/.env", "mode": "ro"}
+            "/home/<USER>/Documents/server_data/jellyfin": {"bind": "/jellyfin", "mode": "ro"},
+            "/home/<USER>/Documents/LunkserverDiscordBot/.env": {"bind": "/app/.env", "mode": "ro"}
         },
         "env": {},
         "ram_limit": "512mb",

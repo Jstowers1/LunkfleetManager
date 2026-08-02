@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import httpx
 
 BASE_URL = "http://127.0.0.1:8000"
-AUTH_COOKIE = {"auth_token": os.environ.get("ADMIN_TOKEN", "lunkman4ever!")}
+AUTH_COOKIE = {"auth_token": os.environ.get("ADMIN_TOKEN", "<USER>4ever!")}
 DASHBOARD = f"{BASE_URL}/api/dashboard"
 SATELLITES = f"{BASE_URL}/api/satellites"
 TIMEOUT = 30  #Each request must respond within 30s, dashboard has 10s caps internally

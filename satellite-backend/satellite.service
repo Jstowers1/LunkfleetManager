@@ -4,9 +4,9 @@ After=network.target
 
 [Service]
 Type=simple
-User=lunkman
-WorkingDirectory=/home/lunkman/Documents/LunkserverManager/satellite-backend
-ExecStart=/home/lunkman/Documents/LunkserverManager/satellite-backend/.venv/bin/python main.py
+User=<USER>
+WorkingDirectory=/home/<USER>/Documents/LunkfleetManager/satellite-backend
+ExecStart=/home/<USER>/Documents/LunkfleetManager/satellite-backend/.venv/bin/python main.py
 Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=10

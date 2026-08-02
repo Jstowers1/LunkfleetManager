@@ -1,4 +1,4 @@
-"""Satellite Backend — Lightweight resource stats service for LunkserverManager.
+"""Satellite Backend — Lightweight resource stats service for LunkfleetManager.
 
 All Docker management stays on the master dashboard. This microservice
 just reports CPU, RAM, disk, VRAM, and bandwidth stats for remote hosts

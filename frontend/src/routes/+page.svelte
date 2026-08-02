@@ -119,7 +119,7 @@
 
             //Map satellite microservice to remote host format
             const satellites = (data.satellites || []).map(s => ({
-                host: `ssh://lunkman@${s.host}`,
+                host: `ssh://<USER>@${s.host}`,
                 ip: s.host,
                 alias: s.alias || `Lunkserver ${s.host.split('.').pop()}`,
                 stats: {

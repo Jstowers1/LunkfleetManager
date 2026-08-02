@@ -36,7 +36,7 @@ FRP_SERVER_ADDR = os.environ.get("FRP_SERVER_ADDR", "")
 FRP_TOKEN = os.environ.get("FRP_TOKEN", "")
 FACTORIO_USERNAME = os.environ.get("FACTORIO_USERNAME", "")
 FACTORIO_TOKEN = os.environ.get("FACTORIO_TOKEN", "")
-SATELLITE_HOSTS = {"ssh://lunkman@<TAILSCALE_IP>"}
+SATELLITE_HOSTS = {"ssh://<USER>@<TAILSCALE_IP>"}
 
 #Recipes reads CF API KEY at import time before load dotenv runs, reread it here to pick up the env value, patch both the module attribute and the local import binding
 import recipes as _recipes
@@ -556,7 +556,7 @@ def _download_modrinth_mods(server_id: str, slugs: list, game_version: str) -> l
     Filters by game_version. Returns list of installed filenames.
     Skips mods that already exist in mods/."""
     installed = set(m.lower() for m in docker_mgr.list_mods(server_id).get("mods", []))
-    headers = {"User-Agent": "lunkman/lunkServerManager/1.0"}
+    headers = {"User-Agent": "<USER>/lunkServerManager/1.0"}
     results = []
     with httpx.Client(timeout=15) as client:
         for slug in slugs:
@@ -1221,7 +1221,7 @@ def send_server_command(server_id: str, payload: CommandPayload, role: str = Dep
 
 @app.get("/api/modrinth/search")
 async def search_modrinth(query: str, limit: int = 15, facets: str = None):
-    headers = {"User-Agent": "lunkman/lunkServerManager/1.0 (contact@yourdomain.com)"}
+    headers = {"User-Agent": "<USER>/lunkServerManager/1.0 (contact@yourdomain.com)"}
     async with httpx.AsyncClient() as client:
         try:
             encoded_query = urllib.parse.quote(query)

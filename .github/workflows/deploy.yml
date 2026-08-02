@@ -1,0 +1,197 @@
+name: Deploy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'satellite-backend/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Component to deploy
+        required: true
+        default: all
+        type: choice
+        options: [all, backend, frontend, satellite]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      satellite: ${{ steps.filter.outputs.satellite }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+            satellite:
+              - 'satellite-backend/**'
+
+  deploy-backend:
+    needs: detect-changes
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.component == 'all' || inputs.component == 'backend') ||
+      needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      GUEST_TOKEN: ${{ secrets.GUEST_TOKEN }}
+      FRP_SERVER_ADDR: ${{ secrets.FRP_SERVER_ADDR }}
+      FRP_TOKEN: ${{ secrets.FRP_TOKEN }}
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      FACTORIO_USERNAME: ${{ secrets.FACTORIO_USERNAME }}
+      FACTORIO_TOKEN: ${{ secrets.FACTORIO_TOKEN }}
+    steps:
+      - uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Deploy backend to Lunkserver
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ADMIN_TOKEN: ${{ env.ADMIN_TOKEN }}
+          GUEST_TOKEN: ${{ env.GUEST_TOKEN }}
+          FRP_SERVER_ADDR: ${{ env.FRP_SERVER_ADDR }}
+          FRP_TOKEN: ${{ env.FRP_TOKEN }}
+          CF_API_KEY: ${{ env.CF_API_KEY }}
+          FACTORIO_USERNAME: ${{ env.FACTORIO_USERNAME }}
+          FACTORIO_TOKEN: ${{ env.FACTORIO_TOKEN }}
+        with:
+          host: ${{ secrets.LUNKSERVER_TAILSCALE_IP }}
+          username: ${{ secrets.LUNKSERVER_USER }}
+          key: ${{ secrets.LUNKSERVER_SSH_KEY }}
+          envs: ADMIN_TOKEN,GUEST_TOKEN,FRP_SERVER_ADDR,FRP_TOKEN,CF_API_KEY,FACTORIO_USERNAME,FACTORIO_TOKEN
+          script: |
+            set -e
+            cd /home/<USER>/Documents/LunkfleetManager/backend
+            git fetch origin master
+            git reset --hard origin/master
+            source .venv/bin/activate
+            pip install -r requirements.txt
+            cat > .env <<EOF
+            ADMIN_TOKEN=$ADMIN_TOKEN
+            GUEST_TOKEN=$GUEST_TOKEN
+            FRP_SERVER_ADDR=$FRP_SERVER_ADDR
+            FRP_TOKEN=$FRP_TOKEN
+            CF_API_KEY=$CF_API_KEY
+            FACTORIO_USERNAME=$FACTORIO_USERNAME
+            FACTORIO_TOKEN=$FACTORIO_TOKEN
+            EOF
+            sed -i '/=$/d' .env
+            sudo systemctl restart lunk-backend
+            echo "Backend deployed"
+
+  deploy-frontend:
+    needs: detect-changes
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.component == 'all' || inputs.component == 'frontend') ||
+      needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    env:
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      GUEST_TOKEN: ${{ secrets.GUEST_TOKEN }}
+    steps:
+      - uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Deploy frontend to VPS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ADMIN_TOKEN: ${{ env.ADMIN_TOKEN }}
+          GUEST_TOKEN: ${{ env.GUEST_TOKEN }}
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: ADMIN_TOKEN,GUEST_TOKEN
+          script: |
+            set -e
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            cd /root/LunkfleetManager/frontend
+            git fetch origin master
+            git reset --hard origin/master
+            npm install
+            npm run build
+            PORT=8080 pm2 delete lunk-frontend 2>/dev/null || true
+            PORT=8080 ADMIN_TOKEN=$ADMIN_TOKEN GUEST_TOKEN=$GUEST_TOKEN \
+              pm2 start build/index.js --name lunk-frontend
+            echo "Frontend deployed"
+
+  deploy-satellite:
+    needs: detect-changes
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (inputs.component == 'all' || inputs.component == 'satellite') ||
+      needs.detect-changes.outputs.satellite == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: tailscale/github-action@v2
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+
+      - name: Copy satellite-backend to VPS
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "satellite-backend/*"
+          target: "/home/<USER>/Documents/LunkfleetManager"
+          rm: false
+
+      - name: Install and restart satellite
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DASHBOARD_ORIGIN: ${{ secrets.DASHBOARD_ORIGIN }}
+        with:
+          host: ${{ secrets.VPS_IP }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: DASHBOARD_ORIGIN
+          script: |
+            set -e
+            cd /home/<USER>/Documents/LunkfleetManager/satellite-backend
+            id <USER> 2>/dev/null || sudo useradd -m -d /home/<USER> -s /bin/bash <USER>
+            sudo chown -R <USER>:<USER> /home/<USER>/Documents/LunkfleetManager/satellite-backend
+            sudo apt-get update -qq && sudo apt-get install -y -qq python3.12-venv python3-pip
+            rm -rf .venv
+            sudo -u <USER> python3 -m venv .venv
+            sudo -u <USER> .venv/bin/pip install --upgrade pip
+            sudo -u <USER> .venv/bin/pip install -r requirements.txt
+            sudo chown -R <USER>:<USER> .
+            cat > .env <<EOF
+            DASHBOARD_ORIGIN=$DASHBOARD_ORIGIN
+            EOF
+            sed -i '/=$/d' .env
+            sudo chown <USER>:<USER> .env
+            sudo cp satellite.service /etc/systemd/system/satellite.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable satellite
+            sudo systemctl restart satellite
+            sleep 3
+            sudo systemctl --no-pager status satellite || true
+            sudo journalctl -u satellite -n 30 --no-pager || true
+            echo "Satellite deployed"
