@@ -1,19 +1,15 @@
 import os
 import json
 
-#CurseForge API key — read from env so it's never committed. Required
-#for AUTO_CURSEFORGE modpack servers (minecraft_03). See .env.example.
+#CurseForge API key from env so it is never committed, required for auto curseforge modpack servers
 CF_API_KEY = os.environ.get("CF_API_KEY", "")
 
-#Path to user-created recipes (dashboard "Add Server"). JSON overlay loaded
-#at import and on each CRUD call. Hand-written recipes stay in this file;
-#user-created ones live separately so git diffs stay clean.
+#Path to user created recipes loaded at import and on each CRUD call, hand written recipes stay in this file, user created ones live separately so git diffs stay clean
 USER_RECIPES_PATH = os.path.expanduser("~/Documents/server_data/user_recipes.json")
 
-#Pre-configured templates for the "Add Server" picker. Each has the correct
-#image, ports, container_path, env vars, and a sane RAM default.
+#Templates for the add server picker, each has the correct image ports container path env vars and a ram default
 SERVER_TEMPLATES = {
-    #--- GAMES ---
+    #Games
     "factorio": {
         "label": "Factorio",
         "category": "Games",
@@ -123,7 +119,7 @@ SERVER_TEMPLATES = {
         "ram_limit": "4g",
         "command_template": "echo 'CS2 CLI not supported'",
     },
-    #--- MEDIA ---
+    #Media
     "jellyfin": {
         "label": "Lunkflix Media Server",
         "category": "Media",
@@ -176,7 +172,7 @@ SERVER_TEMPLATES = {
         "ram_limit": "2g",
         "command_template": "echo 'Immich web UI only'",
     },
-    #--- READING ---
+    #Reading
     "komga": {
         "label": "Komga (Manga/Comics)",
         "category": "Reading",
@@ -203,7 +199,7 @@ SERVER_TEMPLATES = {
         "ram_limit": "1g",
         "command_template": "echo 'Kavita web UI only'",
     },
-    #--- UTILITY ---
+    #Utility
     "adguardhome": {
         "label": "AdGuard Home (DNS Adblocker)",
         "category": "Utility",
@@ -387,7 +383,7 @@ SERVER_TEMPLATES = {
         "command_template": "echo 'RedisInsight web UI only'",
     },
 
-    #--- DEVELOPMENT ---
+    #Development
     "code-server": {
         "label": "Code Server (VS Code in Browser)",
         "category": "Development",
@@ -441,7 +437,7 @@ SERVER_TEMPLATES = {
         "command_template": "echo 'Excalidraw web UI only'",
     },
 
-    #--- MORE GAMES ---
+    #More games
     "foundry-vtt": {
         "label": "Foundry VTT (Tabletop RPG)",
         "category": "Games",
@@ -495,7 +491,7 @@ SERVER_TEMPLATES = {
         "command_template": "echo '7DTD CLI not supported'",
     },
 
-    #--- MORE MEDIA ---
+    #More media
     "plex": {
         "label": "Plex Media Server",
         "category": "Media",
@@ -562,7 +558,7 @@ SERVER_TEMPLATES = {
         "command_template": "echo 'PhotoPrism web UI only'",
     },
 
-    #--- HOME AUTOMATION ---
+    #Home automation
     "homeassistant": {
         "label": "Home Assistant (Smart Home Hub)",
         "category": "Home Automation",
@@ -629,7 +625,7 @@ SERVER_TEMPLATES = {
         "command_template": "echo 'ESPHome web UI only'",
     },
 
-    #--- NETWORKING ---
+    #Networking
     "wireguard": {
         "label": "WireGuard (VPN Server)",
         "category": "Networking",
@@ -683,7 +679,7 @@ SERVER_TEMPLATES = {
         "command_template": "echo 'Headscale control server'",
     },
 
-    #--- MONITORING ---
+    #Monitoring
     "prometheus": {
         "label": "Prometheus (Metrics Collection)",
         "category": "Monitoring",
@@ -724,7 +720,7 @@ SERVER_TEMPLATES = {
         "command_template": "echo 'Changedetection web UI only'",
     },
 
-    #--- SECURITY ---
+    #Security
     "authentik": {
         "label": "Authentik (Identity Provider / SSO)",
         "category": "Security",
@@ -859,7 +855,7 @@ def create_custom_recipe(server_id, name, image, ports, container_path="/data",
     save_user_recipe(server_id, recipe)
     return recipe, None
 
-#Containers we never auto-discover: Hermes agent pods, FRP tunnel, etc.
+#Containers we never auto discover like Hermes agent pods and FRP tunnel
 _DISCOVERY_BLACKLIST_PREFIXES = ("hermes", "frpc", "frps", "network_frp")
 _DISCOVERY_BLACKLIST_IMAGES = ("nikolaik/python-nodejs",)
 
@@ -1214,13 +1210,13 @@ SERVER_RECIPES = {
     }
 }
 
-#Load user-created recipes from JSON overlay (dashboard "Add Server").
+#Load user created recipes from the JSON overlay
 try:
     SERVER_RECIPES.update(_load_user_recipes())
 except Exception:
     pass
 
-#Auto-discover unmanaged Docker containers and merge them in.
+#Auto discover unmanaged Docker containers and merge them in
 try:
     SERVER_RECIPES.update(discover_containers())
 except Exception:

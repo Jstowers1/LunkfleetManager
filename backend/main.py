@@ -26,12 +26,10 @@ import re
 import socket
 from datetime import datetime
 
-#Load .env from the backend working directory (no sudo, no systemd drop-in).
+#Load env from the backend working directory with no sudo or systemd drop-in
 load_dotenv()
 
-#Secrets — read from env ONLY. Empty fallback is a safe default: if .env
-#is missing, no one can authenticate (no silent open-access). Production
-#must set all of these via .env (see .env.example).
+#Secrets come from env only, empty fallback is a safe default, if env is missing nobody can authenticate, production must set these in env
 ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "")
 GUEST_TOKEN = os.environ.get("GUEST_TOKEN", "")
 FRP_SERVER_ADDR = os.environ.get("FRP_SERVER_ADDR", "")
@@ -40,18 +38,15 @@ FACTORIO_USERNAME = os.environ.get("FACTORIO_USERNAME", "")
 FACTORIO_TOKEN = os.environ.get("FACTORIO_TOKEN", "")
 SATELLITE_HOSTS = {"ssh://lunkman@<TAILSCALE_IP>"}
 
-#recipes.py reads CF_API_KEY at import time (before load_dotenv runs above),
-#so re-read it here to pick up the .env value. Patch both the module attribute
-#(used by SERVER_RECIPES env dicts) and our local import binding.
+#Recipes reads CF API KEY at import time before load dotenv runs, reread it here to pick up the env value, patch both the module attribute and the local import binding
 import recipes as _recipes
 _recipes.CF_API_KEY = os.environ.get("CF_API_KEY", "")
 CF_API_KEY = _recipes.CF_API_KEY
 
-#Cache for Docker container stats, populated by background task
+#Docker container stats cache populated by the background task
 STATS_CACHE = {}
 
-#Disk usage cache: {server_id: (timestamp, gb)}. du on large dirs (Minecraft
-#worlds) can take seconds; 30s TTL keeps the per-server page snappy.
+#Disk usage cache keyed by server id, du on large dirs can take seconds, 30s TTL keeps the page fast
 _DISK_CACHE = {}
 _DISK_TTL = 30
 
@@ -74,7 +69,7 @@ def get_server_disk_gb(server_id):
             return gb
     except Exception:
         pass
-    #ponytail: du failed or timed out — return last known or 0
+    #ponytail du failed or timed out, return last known or zero
     return cached[1] if cached else 0.0
 
 def get_fleet_allocation():
@@ -97,9 +92,7 @@ def get_fleet_allocation():
         "running_local": running_count,
     }
 
-#Short-TTL cache for psutil.cpu_percent so concurrent API callers
-#(/api/system + /api/dashboard polled in the same cycle) don't reset
-#each other's baseline and get 0.0% back.
+#Short TTL cache for psutil cpu percent so concurrent API callers do not reset each others baseline and get zero percent back
 _cpu_cache = {"value": 0.0, "ts": 0.0}
 _CPU_CACHE_TTL = 0.8  #seconds
 
@@ -111,8 +104,7 @@ def get_cpu_percent():
         return _cpu_cache["value"]
     val = psutil.cpu_percent(interval=None)
     if val == 0.0 and now - _cpu_cache["ts"] < 2.0:
-        #psutil returned 0.0 because another caller just reset the baseline.
-        #Return the last real reading instead of reporting a fake 0%.
+        #Psutil returned zero because another caller reset the baseline, return the last real reading instead
         return _cpu_cache["value"]
     _cpu_cache["value"] = val
     _cpu_cache["ts"] = now
@@ -123,12 +115,12 @@ docker_mgr = DockerManager()
 stats_fetcher = StatsFetcher()
 
 def get_current_role(auth_token: str = Cookie(None), authorization: str = Header(None)):
-    #Support Authorization: Bearer <token> for service-to-service auth (Discord bot).
+    #Support bearer token for service to service auth like the Discord bot
     bearer_token = None
     if authorization and authorization.lower().startswith("bearer "):
         bearer_token = authorization[7:].strip()
     token = auth_token or bearer_token
-    #compare_digest prevents timing attacks on token comparison
+    #Compare digest prevents timing attacks on token comparison
     if token and compare_digest(token, ADMIN_TOKEN):
         return "admin"
     if token and compare_digest(token, GUEST_TOKEN):
@@ -144,8 +136,8 @@ def _ssh_compose(compose_file: str, remote_host: str, subcmd: str):
     """Run 'docker compose <subcmd>' on a remote host via SSH.
     Raises RuntimeError on non-zero exit."""
     ssh_target = remote_host.replace("ssh://", "")
-    #Alias map: Tailscale IP → SSH host alias from ~/.ssh/config
-    alias_map = {"<TAILSCALE_IP>": "Lunkserver3"}
+    #Alias map from Tailscale IP to SSH host alias in ssh config
+    alias_map = {"<TAILSCALE_IP>": "satellite-1"}
     ssh_target = alias_map.get(ssh_target, ssh_target)
     cmd = f"cd {os.path.dirname(compose_file)} && docker compose {subcmd}"
     proc = subprocess.run(
@@ -201,7 +193,7 @@ remotePort = 8000
     for server_id, recipe in SERVER_RECIPES.items():
         if server_id not in running_servers:
             continue
-        #Don't auto-tunnel auto-discovered containers
+        #Do not auto tunnel auto discovered containers
         if recipe.get("_auto"):
             continue
         target_ip = "127.0.0.1"
@@ -282,7 +274,7 @@ async def automated_backup_scheduler():
                             print(f"[{now.strftime('%H:%M:%S')}] Failed to backup {server_id}: {e}")
                 print(f"[{now.strftime('%H:%M:%S')}] Automated Minecraft backups complete.")
 
-            #Daily app backups at 5:00 AM
+            #Daily app backups at 5 AM
             if now.hour == 5 and last_daily_backup_date != now.date():
                 last_daily_backup_date = now.date()
                 for server_id, recipe in SERVER_RECIPES.items():
@@ -318,18 +310,18 @@ class ModInstallPayload(BaseModel):
 class CreateServerPayload(BaseModel):
     server_id: str
     name: str = ""
-    template: str = ""          #Template key (e.g. "factorio") or "custom"
+    template: str = ""          #Template key like factorio or custom
     image: str = ""             #For custom mode or overriding template image
     description: str = ""
-    #Manual-mode fields (ignored when template != "custom")
+    #Manual mode fields ignored when template is not custom
     ports: dict = {}
     container_path: str = "/data"
     client_port: int | None = None
     env: dict = {}
     ram_limit: str = "0g"
     start_now: bool = True
-    #Game-specific options for the creation wizard (factorio/minecraft).
-    game_options: dict = {}     #factorio: {map_gen_preset, mods:[]}, minecraft: {server_type, mc_version, modpack_url}
+    #Game specific options for the creation wizard
+    game_options: dict = {}     #Factorio uses map gen preset and mods, Minecraft uses server type and version and modpack url
 
 def get_recipe(server_id: str):
     """Get server recipe or raise 404."""
@@ -361,9 +353,9 @@ app = FastAPI(lifespan=lifespan)
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
-    "http://server.jstowers1.dev",
-    "http://<VPS_PUBLIC_IP>:8080",
-    "http://<VPS_PUBLIC_IP>:8000"
+    "http://<DOMAIN>",
+    "http://<VPS_IP>:8080",
+    "http://<VPS_IP>:8000"
 ]
 
 app.add_middleware(
@@ -389,7 +381,7 @@ def get_bot_status():
     result = []
     for sid, raw_status in raw.items():
         recipe = SERVER_RECIPES.get(sid, {})
-        #Normalize the free-form docker status string into a state token.
+        #Normalize the docker status string into a state token
         s = str(raw_status).lower()
         if "up" in s or s == "running":
             state = "running"
@@ -416,7 +408,7 @@ def get_bot_status():
         })
     return {"servers": result}
 
-#--- Server template management (dashboard "Add Server" / "Remove Server") ---
+#Server template management for the dashboard add and remove server pages
 
 @app.get("/api/templates")
 def get_templates():
@@ -488,7 +480,7 @@ async def get_factorio_versions():
             resp = await client.get("https://factorio.com/api/latest-releases", timeout=10)
             resp.raise_for_status()
             data = resp.json()
-            #Also fetch available Docker tags for the version dropdown
+            #Also fetch Docker tags for the version dropdown
             resp2 = await client.get(
                 "https://hub.docker.com/v2/repositories/factoriotools/factorio/tags",
                 params={"page_size": 50, "ordering": "last_updated"}, timeout=10)
@@ -496,13 +488,13 @@ async def get_factorio_versions():
             tags_data = resp2.json()
         stable_ver = data.get("stable", {}).get("headless", "")
         exp_ver = data.get("experimental", {}).get("headless", "")
-        #Extract unique version-number tags (skip -rootless, stable-, etc.)
+        #Extract unique version number tags, skip rootless and stable prefixes
         import re
         seen = set()
         versions = []
         for t in tags_data.get("results", []):
             name = t["name"]
-            #Only pure version numbers like 2.0.77, 2.1.12
+            #Only pure version numbers like 2.0.77 and 2.1.12
             if re.match(r"^\d+\.\d+(\.\d+)?$", name) and name not in seen:
                 seen.add(name)
                 versions.append(name)
@@ -532,8 +524,7 @@ async def search_cf_modpacks(query: str, limit: int = 15, game_version: str = No
             "sortField": "2",          #Popularity
             "sortOrder": "desc",
         }
-        #gameVersion filters server-side on CurseForge (gameVersionLatestFiles
-        #is always empty on search results, so client-side filtering doesn't work).
+        #gameVersion filters server side on CurseForge, client side filtering does not work because search results omit it
         if game_version:
             params["gameVersion"] = game_version
         async with httpx.AsyncClient() as client:
@@ -576,12 +567,12 @@ def _download_modrinth_mods(server_id: str, slugs: list, game_version: str) -> l
                            params=params, headers=headers)
             r.raise_for_status()
             versions = r.json()
-            #Prefer release, fall back to beta (Geyser only ships betas)
+            #Prefer release builds, fall back to beta since Geyser only ships betas
             releases = [v for v in versions if v.get("version_type") == "release"]
             if not releases:
                 releases = versions
             if not releases:
-                continue  #No version match — skip silently
+                continue  #No version match, skip silently
             f = releases[0]["files"][0]
             if f["filename"].lower() in installed:
                 continue  #Already present
@@ -591,9 +582,9 @@ def _download_modrinth_mods(server_id: str, slugs: list, game_version: str) -> l
             results.append(f["filename"])
     return results
 
-#Modrinth slugs for the one-click Geyser+Floodgate Bedrock crossplay setup.
+#Modrinth slugs for the one click Geyser and Floodgate Bedrock crossplay setup
 GEYSER_MODS = ["fabric-api", "geyser", "floodgate"]
-#Server-side performance mods — based on minecraft_01's working set.
+#Server side performance mods based on the working set from minecraft 01
 OPTIMIZATION_MODS = ["fabric-api", "lithium", "ferrite-core", "krypton", "servercore"]
 
 def _install_geyser_sync(server_id: str, game_version: str, recipe: dict, bedrock_port: int = 19132):
@@ -618,7 +609,7 @@ def check_port_conflicts(server_id: str, ports: dict):
     if not ports:
         return
     new_host_ports = set(int(v) for v in ports.values() if v)
-    #1. Conflict with existing server recipes
+    #Conflict check against existing server recipes
     for sid, r in SERVER_RECIPES.items():
         if sid == server_id:
             continue
@@ -627,7 +618,7 @@ def check_port_conflicts(server_id: str, ports: dict):
         if clash:
             raise HTTPException(status_code=409,
                 detail=f"Port(s) {sorted(clash)} already used by server '{r.get('name', sid)}'.")
-    #2. Port actually bound on the host right now (catches non-Lunkserver processes)
+    #Port bound on the host right now, catches non Lunkserver processes
     for hp in new_host_ports:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(0.2)
@@ -637,8 +628,7 @@ def check_port_conflicts(server_id: str, ports: dict):
         except OSError:
             raise HTTPException(status_code=409,
                 detail=f"Port {hp} is already in use on this host.")
-    #ponytail: TCP-only check; a UDP-only port won't be caught. Docker itself
-    #would still refuse to bind, so the failure surfaces — just less cleanly.
+    #ponytail TCP only check, a UDP only port will not be caught, Docker still refuses to bind so the failure surfaces just less cleanly
 
 @app.post("/api/servers/create")
 def create_server(payload: CreateServerPayload, role: str = Depends(require_admin)):
@@ -648,14 +638,12 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
     if not server_id:
         raise HTTPException(status_code=400, detail="server_id is required")
 
-    #Resolve ports before creating the recipe so the conflict check runs
-    #before anything is written to disk (create_from_template persists).
+    #Resolve ports before creating the recipe so the conflict check runs before writing to disk
     template_key = payload.template or "custom"
     if template_key != "custom" and template_key in SERVER_TEMPLATES:
         tmpl = SERVER_TEMPLATES[template_key]
         ports_to_check = tmpl["ports"].copy()
-        #Apply client_port override: swap the primary host port (the one
-        #matching the template's default client_port) with the user's value.
+        #Apply client port override, swap the primary host port matching the template default with the user value
         if payload.client_port and payload.client_port != tmpl["client_port"]:
             default_cp = tmpl["client_port"]
             ports_to_check = {
@@ -666,7 +654,7 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
         ports_to_check = payload.ports
     else:
         ports_to_check = {}
-    #Geyser Bedrock UDP port — add to conflict check if user enabled Geyser.
+    #Geyser Bedrock UDP port, add to conflict check if the user enabled Geyser
     gops = payload.game_options or {}
     if gops.get("enable_geyser"):
         bp = gops.get("geyser_port") or 19132
@@ -678,8 +666,7 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
         recipe, err = create_from_template(template_key, server_id,
                                             name=payload.name or None,
                                             description=payload.description)
-        #Apply the same client_port override to the persisted recipe so the
-        #container actually binds the user's port, not the template default.
+        #Apply the same client port override to the recipe so the container binds the user port not the template default
         if not err and payload.client_port and payload.client_port != tmpl["client_port"]:
             default_cp = tmpl["client_port"]
             recipe["ports"] = {
@@ -714,18 +701,18 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
     if err:
         raise HTTPException(status_code=400, detail=err)
 
-    #--- Game-specific creation options (factorio/minecraft wizards) ---
+    #Game specific creation options for factorio and minecraft wizards
     gops = payload.game_options or {}
     if recipe.get("game_type") == "factorio":
-        #Version override → maps to image tag (factoriotools/factorio:{tag})
+        #Version override maps to image tag
         fv = gops.get("factorio_version")
         if fv:
             recipe["image"] = f"factoriotools/factorio:{fv}"
             recipe["game_version"] = "2.0" if fv == "stable" else "2.1"
-        #Space Age DLC → env var the Docker image reads on startup
+        #Space Age DLC sets an env var the Docker image reads on startup
         if gops.get("space_age_dlc"):
             recipe["env"]["DLC_SPACE_AGE"] = "true"
-        #Custom map-gen settings (ore frequency/size/richness overrides)
+        #Custom map gen settings for ore frequency size and richness overrides
         map_overrides = gops.get("map_gen_overrides")
         if map_overrides:
             cfg_dir = os.path.expanduser(f"~/Documents/server_data/{server_id}/config")
@@ -733,8 +720,7 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
             settings_path = os.path.join(cfg_dir, "map-gen-settings.json")
             with open(settings_path, "w") as f:
                 json.dump(map_overrides, f, indent=2)
-        #Map-gen preset → write map-gen-settings.json BEFORE container start
-        #so GENERATE_NEW_SAVE uses it on the very first map.
+        #Map gen preset writes map gen settings json before container start so the first map generation uses it
         preset_key = gops.get("map_gen_preset")
         if preset_key:
             preset = FACTORIO_MAP_PRESETS.get(preset_key)
@@ -744,7 +730,7 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
                 settings_path = os.path.join(cfg_dir, "map-gen-settings.json")
                 with open(settings_path, "w") as f:
                     json.dump(preset["settings"], f, indent=2)
-        #Mod pre-install → download selected mods into mods/ before start
+        #Mod pre install downloads selected mods before start
         mods = gops.get("mods", [])
         if mods:
             if not FACTORIO_USERNAME or not FACTORIO_TOKEN:
@@ -761,16 +747,16 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
         save_user_recipe(server_id, recipe)
 
     elif recipe.get("game_type") == "minecraft":
-        #Server type override (VANILLA/PAPER/FABRIC/FORGE) via TYPE env
+        #Server type override via TYPE env
         mc_type = gops.get("server_type")
         if mc_type:
             recipe["env"]["TYPE"] = mc_type
-        #Game version override (Minecraft version string, e.g. "1.21.1")
+        #Game version override as a Minecraft version string
         mc_version = gops.get("mc_version")
         if mc_version:
             recipe["env"]["VERSION"] = mc_version
             recipe["game_version"] = mc_version
-        #CurseForge modpack → set TYPE=AUTO_CURSEFORGE + CF_PAGE_URL
+        #CurseForge modpack sets type to auto curseforge with a page url
         modpack_url = gops.get("modpack_url")
         if modpack_url:
             if not CF_API_KEY:
@@ -778,7 +764,7 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
             recipe["env"]["TYPE"] = "AUTO_CURSEFORGE"
             recipe["env"]["CF_API_KEY"] = CF_API_KEY
             recipe["env"]["CF_PAGE_URL"] = modpack_url
-        #Fabric mods → download into mods/ before start
+        #Fabric mods download before start
         fabric_mods = gops.get("fabric_mods", [])
         if fabric_mods:
             for mod in fabric_mods:
@@ -786,8 +772,7 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
                 if result["status"] == "error":
                     raise HTTPException(status_code=500, detail=f"Mod install failed ({mod['filename']}): {result['message']}")
         save_user_recipe(server_id, recipe)
-        #Resolve the actual MC version (not "latest") for mod downloads.
-        #If user didn't pick one, fetch the latest release from Mojang.
+        #Resolve the actual MC version for mod downloads, if the user did not pick one fetch the latest release from Mojang
         mc_version = gops.get("mc_version") or ""
         if not mc_version:
             try:
@@ -799,16 +784,15 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
         if mc_version:
             recipe["game_version"] = mc_version
             save_user_recipe(server_id, recipe)
-        #Geyser + Floodgate one-click → install both + add Bedrock port
+        #Geyser and Floodgate one click install adds both and opens the Bedrock port
         if gops.get("enable_geyser"):
             bp = gops.get("geyser_port") or 19132
             _install_geyser_sync(server_id, mc_version, recipe, bedrock_port=bp)
-        #Optimization mods one-click
+        #Optimization mods one click install
         if gops.get("enable_optimization"):
             _install_optimization_mods_sync(server_id, mc_version)
 
-    #Bust the fleet cache so the new server shows in the sidebar immediately,
-    #even if the user chose not to start the container right now.
+    #Bust the fleet cache so the new server shows in the sidebar immediately even without starting the container
     docker_mgr._fleet_cache = None
 
     #Optionally start the container immediately
@@ -826,8 +810,7 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
             return {"status": "warning",
                     "message": f"Recipe saved but container failed to start: {result.get('message')}",
                     "server_id": server_id}
-        #Seed STATS_CACHE so the new server appears in the fleet immediately
-        #instead of waiting for the next 1.5s poll cycle.
+        #Seed the stats cache so the new server appears in the fleet immediately instead of waiting for the poll cycle
         STATS_CACHE[server_id] = {
             "id": server_id, "status": "running", "cpu_load": 0.0,
             "ram_used": 0.0, "uptime": "Booting...", "game_type": recipe.get("game_type", "unknown"),
@@ -892,7 +875,7 @@ def get_fleet_groups():
         if recipe.get("_user_created"):
             groups[host_key]["user_created"].add(server_id)
         groups[host_key]["servers"][server_id] = status
-    #Drop fleet groups whose host is entirely offline (every server "unknown").
+    #Drop fleet groups whose host is entirely offline
     groups = {k: g for k, g in groups.items()
               if any(s != "unknown" for s in g["servers"].values())}
     #Convert sets to lists for JSON serialization
@@ -978,7 +961,7 @@ def get_container_groups():
             for group in groups.values():
                 if sid in group["servers"]:
                     group["servers"][sid] = status
-    #Drop groups whose host is entirely unreachable (every server "unknown").
+    #Drop groups whose host is entirely unreachable
     groups = {k: g for k, g in groups.items()
               if any(s != "unknown" for s in g["servers"].values())}
     return groups
@@ -995,14 +978,11 @@ async def get_satellites():
 async def get_dashboard():
     """Consolidated telemetry: system, vram, remote-hosts, fleet/groups,
     containers/groups, vps-telem, satellites. One round trip instead of 6."""
-    #Fast local calls run first.
+    #Fast local calls run first
     system = get_system_stats()
     vram = stats_fetcher.get_vram_stats()
-    #Slow: fleet, containers, remote SSH, satellite HTTP, VPS API — all
-    #concurrent with 10s timeout each. return_exceptions=True means a
-    #hung SSH to one host returns empty, not a 504.
-    #ponytail: wait_for can't cancel a running thread; leaked thread
-    #finishes in background. Acceptable until SSH hangs become frequent.
+    #Slow calls run concurrent with 10s timeout each, return exceptions true means a hung SSH returns empty not a 504
+    #ponytail wait for can not cancel a running thread, leaked thread finishes in background, acceptable until SSH hangs become frequent
     fleet_groups, container_groups, remote_hosts, satellites, vps_telem = await asyncio.gather(
         asyncio.wait_for(asyncio.to_thread(get_fleet_groups), 10),
         asyncio.wait_for(asyncio.to_thread(get_container_groups), 10),
@@ -1052,7 +1032,7 @@ def get_server_stats(server_id: str, role: str = Depends(get_current_role)):
             ports = recipe.get("ports", {})
             primary_port = list(ports.values())[0] if ports else None
 
-        #Overrides > recipe defaults
+        #Overrides take priority over recipe defaults
         ram_limit_str = overrides.get("ram_limit") or recipe.get("ram_limit", "0g")
         allocated_gb = parse_ram_to_gb(ram_limit_str)
         description = overrides.get("description") or recipe.get("description", "")
@@ -1076,8 +1056,7 @@ def get_server_stats(server_id: str, role: str = Depends(get_current_role)):
                 stats["cpu_load"] = 0.0
             return stats
 
-        #Fallback: poll Docker directly if background cache hasn't populated yet
-        #(happens when the poller is stuck on slow remote hosts)
+        #Fallback poll Docker directly if the background cache has not populated yet, happens when the poller is stuck on slow remote hosts
         try:
             stats = docker_mgr.get_container_stats(server_id)
             stats["name"] = recipe.get("name", server_id)
@@ -1126,7 +1105,7 @@ def start_server_endpoint(server_id: str, role: str = Depends(get_current_role))
     compose_file = recipe.get("compose_file")
     remote_host = recipe.get("remote_host")
 
-    #docker-compose servers on remote hosts
+    #Docker compose servers on remote hosts
     if compose_file and remote_host:
         try:
             _ssh_compose(compose_file, remote_host, f"up -d {server_id}")
@@ -1153,7 +1132,7 @@ def start_server_endpoint(server_id: str, role: str = Depends(get_current_role))
     if server_id in STATS_CACHE:
         STATS_CACHE[server_id]["status"] = "running"
         STATS_CACHE[server_id]["uptime"] = "Booting..."
-        # Refresh from Docker live so uptime isn't stuck on "Booting..."
+        #Refresh from Docker live so uptime is not stuck on booting
         try:
             fresh = docker_mgr.get_container_stats(server_id)
             if fresh.get("status") != "error":
@@ -1291,7 +1270,7 @@ def setup_geyser(server_id: str, game_version: str = "", bedrock_port: int = 191
     installed = docker_mgr.list_mods(server_id).get("mods", [])
     if any("geyser" in m.lower() for m in installed):
         raise HTTPException(status_code=409, detail="Geyser is already installed on this server.")
-    #Check the chosen Bedrock port against other servers before claiming it.
+    #Check the Bedrock port against other servers before claiming it
     check_port_conflicts(server_id, {f"{bedrock_port}/udp": bedrock_port})
     _install_geyser_sync(server_id, game_version, recipe, bedrock_port=bedrock_port)
     return {"status": "success",
@@ -1326,7 +1305,7 @@ def remove_mods_by_slug(server_id: str, payload: RemoveModsPayload, role: str = 
     for filename in installed:
         fl = filename.lower()
         for slug in payload.slugs:
-            #Match "lithium", "ferritecore" (slug without hyphens), "geyser", etc.
+            #Match slug names without hyphens like lithium ferritecore and geyser
             normalized = slug.replace("-", "").replace("_", "")
             if normalized in fl.replace("-", "").replace("_", ""):
                 docker_mgr.delete_mod(server_id, filename)
@@ -1339,7 +1318,7 @@ def get_mod_bundles(server_id: str, role: str = Depends(get_current_role)):
     """Check which mod bundles (geyser, optimization) are fully installed."""
     installed = set(m.lower() for m in docker_mgr.list_mods(server_id).get("mods", []))
     def _check(slugs):
-        #A slug is "installed" if any jar file matches the normalized slug name
+        #A slug is installed if any jar file matches the normalized slug name
         for slug in slugs:
             normalized = slug.replace("-", "").replace("_", "")
             if not any(normalized in f.replace("-", "").replace("_", "") for f in installed):
@@ -1350,16 +1329,9 @@ def get_mod_bundles(server_id: str, role: str = Depends(get_current_role)):
         "optimization": _check(OPTIMIZATION_MODS),
     }
 
-#==========================================
-#FACTORIO MOD PORTAL
-#==========================================
-#The Factorio mod portal has no fuzzy search endpoint — /api/mods is an
-#alphabetical listing and /api/mods/{name} does exact-name lookup. We
-#fetch a page of the listing and server-side filter by substring. Good
-#enough for "type the mod name you remember." The website's real search
-#uses Algolia behind HTML, not a public JSON API.
-#Downloads require Factorio account credentials (username + token from
-#factorio.com → Account → Profile).
+#Factorio mod portal
+#The mod portal has no fuzzy search, the listing API is alphabetical and the detail API does exact name lookup, we fetch a page and filter by substring
+#Downloads need Factorio account credentials
 
 @app.get("/api/factorio/mods/search")
 async def search_factorio_mods(query: str, limit: int = 15, factorio_version: str = "", expansion: str = ""):
@@ -1371,7 +1343,7 @@ async def search_factorio_mods(query: str, limit: int = 15, factorio_version: st
         return {"results": []}
     try:
         async with httpx.AsyncClient() as client:
-            #1. Website search returns HTML with mod links
+            #Website search returns HTML with mod links
             search_url = "https://mods.factorio.com/search"
             params = {"query": query, "show_deprecated": "False", "exclude_category": "internal"}
             if factorio_version:
@@ -1380,11 +1352,11 @@ async def search_factorio_mods(query: str, limit: int = 15, factorio_version: st
                 params["expansion"] = expansion
             resp = await client.get(search_url, params=params, timeout=15, follow_redirects=True)
             resp.raise_for_status()
-            #Extract mod names from /mod/{name}?from=search links
-            mod_names = list(dict.fromkeys(  #dedupe, preserve order
+            #Extract mod names from search links
+            mod_names = list(dict.fromkeys(  #dedupe and preserve order
                 m for m in re.findall(r'href="/mod/([^"?]+)\?from=search"', resp.text)
-            ))[:limit * 3]  #fetch extra; some won't have releases for our fv
-            #2. Direct lookup each mod for release details
+            ))[:limit * 3]  #fetch extra, some will not have releases for our factorio version
+            #Direct lookup each mod for release details
             hits = []
             for name in mod_names:
                 if len(hits) >= limit:
@@ -1393,7 +1365,7 @@ async def search_factorio_mods(query: str, limit: int = 15, factorio_version: st
                 if r.status_code != 200:
                     continue
                 d = r.json()
-                #latest_release is null on this endpoint; find latest matching fv from releases
+                #Latest release is null on this endpoint, find the latest matching factorio version from releases
                 releases = d.get("releases", [])
                 if factorio_version:
                     matching = [rel for rel in releases
@@ -1401,7 +1373,7 @@ async def search_factorio_mods(query: str, limit: int = 15, factorio_version: st
                     releases = matching
                 if not releases:
                     continue
-                rel = releases[-1]  #latest release for our fv
+                rel = releases[-1]  #latest release for our factorio version
                 hits.append({
                     "name": d["name"],
                     "title": d.get("title", d["name"]),
@@ -1458,10 +1430,7 @@ async def get_factorio_mod_details(mod_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lookup failed: {str(e)}")
 
-#Factorio built-in map-gen presets, transcribed from
-#data/base/prototypes/map-gen-presets.lua (Factorio 2.0).
-#Each preset patches map-gen-settings.json's autoplace_controls + top-level keys.
-#Named values ("very-good", "very-high", etc.) are valid in the JSON — Factorio resolves them.
+#Factorio map gen presets transcribed from the Factorio 2.0 source, each preset patches map gen settings json, named values like very good and very high are valid
 FACTORIO_MAP_PRESETS = {
     "default": {
         "label": "Default",
@@ -1480,7 +1449,7 @@ FACTORIO_MAP_PRESETS = {
             "starting_area": 1,
         },
     },
-    #Space Age planet autoplace_controls — separate surfaces, each with its own resources.
+    #Space Age planet resources, each planet is a separate surface with its own resources
     "space_age_planets": {
         "nauvis": {
             "coal": {"frequency": 1, "size": 1, "richness": 1},
@@ -1596,7 +1565,7 @@ def get_factorio_map_presets(space_age: bool = False):
         "id": k, "label": v["label"], "description": v["description"],
         "resources": default_ap if k == "default" else None,
     } for k, v in FACTORIO_MAP_PRESETS.items()
-      if k != "space_age_planets"]  #Internal data, not a selectable preset
+      if k != "space_age_planets"]  #Internal data not a selectable preset
     result = {"presets": presets}
     if space_age:
         result["planets"] = FACTORIO_MAP_PRESETS.get("space_age_planets", {})
@@ -1618,13 +1587,12 @@ def apply_factorio_preset(server_id: str, payload: FactorioPresetPayload, role: 
         raise HTTPException(status_code=404, detail="map-gen-settings.json not found. Start the server once to generate it.")
     with open(filepath) as f:
         settings = json.load(f)
-    #Fill: merge preset autoplace_controls into existing ones (Nauvis only).
-    #Only keys the preset defines are overwritten; everything else stays.
+    #Merge preset autoplace controls into existing ones for Nauvis only, only keys the preset defines are overwritten
     existing_ap = settings.setdefault("autoplace_controls", {})
     preset_ap = preset["settings"].get("autoplace_controls", {})
     for resource, attrs in preset_ap.items():
         existing_ap[resource] = {**existing_ap.get(resource, {}), **attrs}
-    #Top-level keys (height, starting_area) still overwrite directly.
+    #Top level keys like height and starting area overwrite directly
     for k, v in preset["settings"].items():
         if k != "autoplace_controls":
             settings[k] = v
@@ -1680,7 +1648,7 @@ async def websocket_logs(websocket: WebSocket, server_id: str):
     token = websocket.query_params.get("token")
     if not token:
         token = websocket.cookies.get("auth_token")
-    #Constant-time check so WS auth can't be timing-attacked either.
+    #Constant time check so WS auth can not be timing attacked
     if not token or not (compare_digest(token, ADMIN_TOKEN) or compare_digest(token, GUEST_TOKEN)):
         await websocket.accept()
         await websocket.send_text("[System] Unauthorized. Valid token required.")
@@ -1795,10 +1763,10 @@ def lookup_minecraft_uuid(username: str, role: str = Depends(get_current_role)):
                 data = json.loads(response.read().decode())
                 if data and "id" in data:
                     raw = data["id"]
-                    #Format as hyphenated UUID: 8-4-4-4-12
+                    #Format as hyphenated UUID
                     uuid = f"{raw[:8]}-{raw[8:12]}-{raw[12:16]}-{raw[16:20]}-{raw[20:]}" if len(raw) == 32 else raw
                     return {"status": "success", "uuid": uuid, "name": data.get("name", username)}
-            #204 No Content = player doesn't exist
+            #204 No Content means the player does not exist
             return {"status": "error", "message": f"Player '{username}' not found."}
     except urllib.error.HTTPError as e:
         if e.code in (204, 400, 404):
@@ -1821,8 +1789,7 @@ def save_server_settings(server_id: str, payload: dict = Body(...), file_key: st
                 raise HTTPException(status_code=400, detail="Server does not support config editing.")
         if not file_key or file_key not in config_files:
             file_key = list(config_files.keys())[0]
-        #Validate JSON files before writing — a malformed whitelist.json
-        #crashes the server on next restart and can't be edited back via UI.
+        #Validate JSON before writing, a malformed whitelist json crashes the server on restart and can not be fixed from the UI
         target_filename = config_files[file_key]
         if target_filename.endswith(".json") and content.strip():
             try:
@@ -1833,9 +1800,7 @@ def save_server_settings(server_id: str, payload: dict = Body(...), file_key: st
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
         with open(filepath, "w") as f:
             f.write(content)
-        #Minecraft can hot-reload the whitelist via rcon instead of a full
-        #container restart (which kicks all connected players). ops/bans and
-        #server.properties still need a real restart to take effect.
+        #Minecraft hot reloads the whitelist via rcon instead of a full restart, ops bans and server properties still need a real restart
         template = recipe.get("command_template", "{command}")
         if recipe.get("game_type") == "minecraft" and target_filename == "whitelist.json":
             docker_mgr.send_command(server_id, "whitelist reload", template)
@@ -1874,7 +1839,7 @@ def save_hardware_overrides(server_id: str, payload: dict = Body(...), role: str
         if "game_version" in payload:
             gv = payload["game_version"]
             recipe["game_version"] = gv
-            #MC: set VERSION env; Factorio: update image tag
+            #Minecraft sets VERSION env, Factorio updates image tag
             if recipe.get("game_type") == "minecraft":
                 recipe.setdefault("env", {})["VERSION"] = gv
             elif recipe.get("game_type") == "factorio":

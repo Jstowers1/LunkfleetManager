@@ -15,9 +15,9 @@ from recipes import SERVER_RECIPES
 
 class StatsFetcher:
     def __init__(self):
-        self._stats_cache = {}          # {host: (timestamp, result)}
-        self._vps_cache = None          # (timestamp, result)
-        self._satellite_cache = None    # (timestamp, result)
+        self._stats_cache = {}          #host to timestamp and result
+        self._vps_cache = None          #timestamp and result
+        self._satellite_cache = None    #timestamp and result
         self._CACHE_TTL = 30            #SSH polling cache
         self._VPS_CACHE_TTL = 60        #VPS cache
         self._SATELLITE_CACHE_TTL = 15  #Satellite cache
@@ -123,9 +123,7 @@ class StatsFetcher:
         results = {"status": "unknown", "cpu": 0.0, "ram": 0.0, "disk": 0.0,
                    "vram_used": 0.0, "vram_total": 0.0, "gpu_name": "unknown"}
 
-        #top -bn2: first sample is boot-average, second is current usage.
-        #top -bn1 (old) reported the lifetime average, not current load.
-        #Also try mpstat as a more accurate fallback if available.
+        #Top bn2 gives boot average then current usage, top bn1 reported the lifetime average not current load, mpstat is a more accurate fallback if available
         remote_cmd = (
             "top -bn2 -d 0.5 2>/dev/null | grep -i '^%Cpu' | tail -1 | "
             "awk '{i=1; while(i<=NF && $i!~/id/) i++; if(i<=NF) {gsub(/,/,\\\"\\\",$(i+1)); print 100-$(i+1)}}'; "
@@ -152,9 +150,7 @@ class StatsFetcher:
 
         parts = raw.split("|||")
         cpu_out = parts[0].strip() if len(parts) > 0 else ""
-        #/proc/stat fallback — ONLY when SSH connected (rc==0) but top produced
-        #no cpu line. Old code took a single snapshot (boot-average, not current).
-        #Now takes two samples 0.5s apart and computes the real delta.
+        #Proc stat fallback only when SSH connected but top produced no cpu line, takes two samples 0.5s apart and computes the real delta
         if not cpu_out and ssh_rc == 0:
             try:
                 proc = subprocess.run(
@@ -200,9 +196,7 @@ class StatsFetcher:
                 results["vram_total"] = round(int(m.group(1)) / (1024**3), 2)
             results["gpu_name"] = "AMD (ROCm)"
             results["status"] = "ok"
-        #Local sysfs fallback for VRAM — ONLY for local stats. If this is a
-        #remote SSH call, reading the dashboard host's /sys/class/drm would
-        #falsely report local GPU as the remote host's VRAM.
+        #Local sysfs fallback for VRAM only for local stats, a remote SSH call would falsely report the local GPU as the remote host VRAM
         elif results["vram_total"] == 0 and not remote_host.startswith("ssh://"):
             for card_dir in glob.glob("/sys/class/drm/card[0-9]*"):
                 if "-render" in card_dir:
@@ -286,7 +280,7 @@ class StatsFetcher:
     async def _get_satellite_stats_async(self) -> list:
         """Async satellite stats fetching."""
         satellites = [
-            {"host": "<VPS_TAILSCALE_IP>", "alias": "LunkVPS", "port": 8765}
+            {"host": "<TAILSCALE_IP>", "alias": "LunkVPS", "port": 8765}
         ]
         try:
             async with httpx.AsyncClient(timeout=5) as client:
@@ -321,7 +315,7 @@ class StatsFetcher:
             "lifetime_gb": 0, "reset_date": "Resets Unknown"
         }
 
-        vps_url = "http://<VPS_TAILSCALE_IP>:8765/api/stats"
+        vps_url = "http://<TAILSCALE_IP>:8765/api/stats"
         try:
             req = urllib.request.Request(vps_url, method="GET")
             req.add_header("Accept", "application/json")
@@ -339,7 +333,7 @@ class StatsFetcher:
         except Exception as e:
             result["status"] = "error"
             print(f"[StatsFetcher] VPS bandwidth fetch failed: {e}")
-            return result  # don't cache errors
+            return result  #do not cache errors
 
         with self._lock:
             self._vps_cache = (now, result)

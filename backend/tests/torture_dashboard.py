@@ -17,7 +17,7 @@ BASE_URL = "http://127.0.0.1:8000"
 AUTH_COOKIE = {"auth_token": os.environ.get("ADMIN_TOKEN", "lunkman4ever!")}
 DASHBOARD = f"{BASE_URL}/api/dashboard"
 SATELLITES = f"{BASE_URL}/api/satellites"
-TIMEOUT = 30  # Each request must respond within 30s (dashboard has 10s caps internally)
+TIMEOUT = 30  #Each request must respond within 30s, dashboard has 10s caps internally
 CONCURRENCY = 20
 TOTAL_REQUESTS = 60
 

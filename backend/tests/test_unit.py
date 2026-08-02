@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-#Import without instantiating DockerManager (avoids docker.from_env()).
+#Import without instantiating DockerManager to avoid docker from env
 import docker_manager as dm_mod
 import recipes
 
@@ -34,7 +34,7 @@ def tmp_server_data(monkeypatch):
     yield tmp
 
 
-#─── Recipe integrity ───────────────────────────────────────────
+#Recipe integrity
 
 class TestRecipes:
     def test_minecraft_recipes_have_whitelist_enabled(self):
@@ -56,7 +56,7 @@ class TestRecipes:
             assert config_files["Whitelist"] == "whitelist.json"
 
 
-#─── Backup methods (real file ops) ─────────────────────────────
+#Backup methods
 
 class TestBackups:
     def test_get_backup_list_empty(self, fake_dm, tmp_server_data):
@@ -126,18 +126,18 @@ class TestBackups:
         os.makedirs(source_dir, exist_ok=True)
         with open(os.path.join(source_dir, "world.txt"), "w") as f:
             f.write("game data")
-        #Mock: no running container (no minecraft freeze needed).
+        #Mock with no running container so no Minecraft freeze is needed
         with patch.object(fake_dm, "_get_container_safe", return_value=None):
             result = fake_dm.create_snapshot(sid, recipes.SERVER_RECIPES["jellyfin"], retention_limit=3)
         assert result["status"] == "success"
         backup_dir = os.path.expanduser(f"~/Documents/server_backups/{sid}")
         backups = [f for f in os.listdir(backup_dir) if f.endswith(".tar.gz")]
         assert len(backups) == 1
-        #Source dir must NOT contain a backups subfolder (the old recursion bug).
+        #Source dir must not contain a backups subfolder, the old recursion bug
         assert not os.path.exists(os.path.join(source_dir, "backups"))
 
 
-#─── Mods methods ───────────────────────────────────────────────
+#Mods methods
 
 class TestMods:
     def test_list_mods_empty(self, fake_dm, tmp_server_data):
@@ -161,7 +161,7 @@ class TestMods:
         assert result["status"] == "error"
 
 
-#─── Status mapping logic ───────────────────────────────────────
+#Status mapping logic
 
 class TestStatusMapping:
     def test_satellite_host_down_marks_unknown(self, fake_dm, monkeypatch):
@@ -177,7 +177,7 @@ class TestStatusMapping:
         assert statuses["satellite_01"] == "unknown"
 
 
-#─── Settings save JSON validation (unit-level) ─────────────────
+#Settings save JSON validation
 
 class TestJSONValidation:
     def test_valid_json_passes(self):
@@ -193,7 +193,7 @@ class TestJSONValidation:
 
 
 class TestSatelliteHealth:
-    SATELLITE_URL = "http://<VPS_TAILSCALE_IP>:8765/api/health"
+    SATELLITE_URL = "http://<TAILSCALE_IP>:8765/api/health"
 
     def test_vps_satellite_reachable(self):
         """LunkVPS satellite must respond on the tailscale network."""

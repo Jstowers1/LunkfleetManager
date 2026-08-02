@@ -13,7 +13,7 @@ import glob
 import urllib.request
 from recipes import SERVER_RECIPES
 
-SATELLITE_IP = "<VPS_TAILSCALE_IP>"
+SATELLITE_IP = "<TAILSCALE_IP>"
 
 class DockerManager:
     def __init__(self):
@@ -66,7 +66,7 @@ class DockerManager:
 
         for host, s_ids in hosts_to_check.items():
             if SATELLITE_IP in str(host):
-                #SSH to docker first (reliable), fall back to satellite HTTP.
+                #SSH to docker first then fall back to satellite HTTP
                 containers = {}
                 try:
                     proc = subprocess.run(
@@ -82,7 +82,7 @@ class DockerManager:
                                 containers[name.strip()] = status.strip()
                 except Exception:
                     pass
-                #If SSH gave nothing, try the satellite HTTP endpoint.
+                #If SSH gave nothing try the satellite HTTP endpoint
                 if not containers:
                     try:
                         url = f"http://{SATELLITE_IP}:8765/api/containers"
@@ -91,7 +91,7 @@ class DockerManager:
                             containers = response.json().get("containers", {})
                     except Exception:
                         pass
-                #Map container statuses. Host reachable but container absent = stopped.
+                #Map container statuses, host reachable but container absent means stopped
                 for s_id in s_ids:
                     if s_id in containers:
                         statuses[s_id] = containers[s_id]
@@ -108,15 +108,12 @@ class DockerManager:
             if host == "local":
                 client = self.client
             else:
-                #ponytail: do NOT eagerly construct docker.DockerClient here.
-                #The ctor opens an SSH control socket and hangs >30s when the
-                #host is down, blocking the SSH-first path below. Defer to the
-                #docker-py fallback only.
+                #ponytail do not eagerly construct docker DockerClient here, the ctor opens an SSH control socket and hangs over 30s when the host is down, defer to the docker py fallback only
                 client = None
             try:
                 if host != "local":
                     try:
-                        ssh_target = host.replace("ssh://", "").replace(SATELLITE_IP, "Lunkserver3")
+                        ssh_target = host.replace("ssh://", "").replace(SATELLITE_IP, "satellite-1")
                         result = subprocess.run(
                              ["ssh", "-o", "ConnectTimeout=2", "-o", "StrictHostKeyChecking=no",
                               ssh_target,
@@ -134,7 +131,7 @@ class DockerManager:
                             if s_id in container_map:
                                 statuses[s_id] = container_map[s_id]
                             else:
-                                #Try compose-style names (e.g., "odysseus-chromadb-1" for "chromadb")
+                                #Try compose style names like odysseus dash chromadb dash one for chromadb
                                 found = False
                                 for cname, cstatus in container_map.items():
                                     if cname.endswith(f"-{s_id}") and cstatus != "Exited":
@@ -142,15 +139,10 @@ class DockerManager:
                                         found = True
                                         break
                                 if not found:
-                                    #SSH worked but container absent = stopped.
-                                    #SSH failed (host down) = unknown, so group
-                                    #filter hides container groups on dead hosts.
+                                    #SSH worked but container absent means stopped, SSH failed means unknown so the group filter hides dead hosts
                                     statuses[s_id] = "stopped" if host_reachable else "unknown"
                     except Exception:
-                        #ponytail: SSH failed (host down). Don't try docker-py
-                        #— DockerClient ctor hangs >30s on unreachable hosts.
-                        #"unknown" (not "stopped") so the group filter can hide
-                        #container groups whose host is entirely offline.
+                        #ponytail SSH failed so host is down, do not try docker py because DockerClient ctor hangs over 30s on unreachable hosts, unknown not stopped so the group filter hides offline hosts
                         for s_id in s_ids:
                             statuses[s_id] = "unknown"
                 else:
@@ -176,7 +168,7 @@ class DockerManager:
 
     def get_container_stats(self, server_id: str, remote_host: str = None):
         """Docker container stats (CPU, RAM, uptime)."""
-        #Skip satellite hosts — they manage their own stats via microservice
+        #Skip satellite hosts, they manage their own stats via microservice
         recipe = SERVER_RECIPES.get(server_id, {})
         host = remote_host or recipe.get("remote_host", "")
         if SATELLITE_IP in str(host):
@@ -207,10 +199,7 @@ class DockerManager:
 
         try:
             status = container.status
-            #Use attrs for image name — container.image.tags triggers a lazy
-            #API call and returns [] when the image digest has been superseded
-            #by a newer pull (old digest loses its tag). attrs has the original
-            #image name the container was created with.
+            #Use attrs for image name, container image tags triggers a lazy API call and returns empty when the digest is superseded by a newer pull, attrs has the original image name
             image_name = container.attrs.get("Config", {}).get("Image") or \
                 (container.image.tags[0] if container.image.tags else "unknown")
 
@@ -229,22 +218,18 @@ class DockerManager:
             precpu_system = stats.get('precpu_stats', {}).get('system_cpu_usage', 0)
             cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - precpu_total
             system_delta = stats['cpu_stats'].get('system_cpu_usage', 0) - precpu_system
-            #online_cpus multiplier: without it a container maxing all cores
-            #shows as ~12.5% on an 8-core host instead of 100%.
+            #Online cpus multiplier, without it a container maxing all cores shows as 12 percent on an 8 core host instead of 100 percent
             online_cpus = stats['cpu_stats'].get('online_cpus') or len(stats['cpu_stats'].get('cpu_usage', {}).get('percpu_usage', [])) or 1
 
             cpu_load = 0.0
-            #First poll after start: precpu_stats baseline is all zeros, so the
-            #delta covers the entire container lifetime → bogus 100+% spike.
+            #First poll after start has a zero baseline so the delta covers the entire container lifetime causing a bogus spike
             if precpu_total > 0 and system_delta > 0 and cpu_delta > 0:
                 cpu_load = round((cpu_delta / system_delta) * online_cpus * 100.0, 1)
 
             uptime_str = "Live"
             try:
                 started_at_raw = container.attrs['State']['StartedAt']
-                #Docker uses 0001-01-01T00:00:00Z for containers that were
-                #created but never started (or freshly created). Parsing it
-                #produces absurd uptimes like "17755750h 0m".
+                #Docker uses year 0001 for containers that were created but never started, parsing it produces absurd uptimes
                 if not started_at_raw or started_at_raw.startswith("0001"):
                     uptime_str = "Never started"
                 else:
@@ -306,8 +291,7 @@ class DockerManager:
             target_client.images.pull(image_repo)
             print(f"[Docker] Image '{image_repo}' ready.")
         except Exception as pull_err:
-            #Local-only images (e.g. lunkserverbot:latest) can't be pulled.
-            #If the image exists locally, proceed; otherwise it's a real error.
+            #Local only images can not be pulled, if the image exists locally proceed, otherwise it is a real error
             try:
                 target_client.images.get(image_repo)
                 print(f"[Docker] Image '{image_repo}' found locally (no pull needed).")
@@ -415,16 +399,13 @@ class DockerManager:
         if not image_tag:
             return {"error": "No image tag to check"}
 
-        #Use the pinned digest from attrs — container.image.id triggers a
-        #lazy API call and can resolve to a DIFFERENT image if the tag was
-        #re-pulled. attrs["Image"] is the digest the container was created with.
+        #Use the pinned digest from attrs, container image id triggers a lazy API call and can resolve to a different image if the tag was repulled, attrs Image is the digest the container was created with
         current_id = container.attrs.get("Image", container.image.id)
 
         try:
             pulled = target_client.images.pull(image_tag)
         except Exception:
-            #Local-only images (lunkserverbot:latest, odysseus:local) have no
-            #registry — same fallback pattern as start_server().
+            #Local only images have no registry, same fallback pattern as start server
             try:
                 target_client.images.get(image_tag)
                 return {"error": "Local-only image (no registry to check)"}
@@ -478,7 +459,7 @@ class DockerManager:
 
         excludes = set(recipe.get("backup_excludes", []))
 
-        #Freeze running minecraft so the tarball isn't half-written.
+        #Freeze running Minecraft so the tarball is not half written
         game_type = recipe.get("game_type")
         template = recipe.get("command_template", "{command}")
         froze = False
@@ -502,7 +483,7 @@ class DockerManager:
             if froze:
                 self.send_command(server_id, "save-on", template)
 
-        #Retention: oldest first.
+        #Retention, oldest first
         existing = sorted(glob.glob(os.path.join(backup_dir, "*.tar.gz")), key=os.path.getctime)
         for old in existing[:-retention_limit]:
             os.remove(old)
@@ -542,7 +523,7 @@ class DockerManager:
 
     def delete_backup(self, server_id: str, filename: str, backup_type: str, recipe: dict):
         """Safely delete a backup file (manager snapshot or native save)."""
-        #Prevent path traversal — only filenames, no dirs.
+        #Prevent path traversal, only filenames no dirs
         if "/" in filename or "\\" in filename:
             return {"status": "error", "message": "Invalid filename."}
         try:
@@ -553,9 +534,7 @@ class DockerManager:
                     return {"status": "success", "message": "Backup deleted."}
                 return {"status": "error", "message": "File not found."}
 
-            #Native saves can be nested in subdirs — walk to find them,
-            #same as restore_backup does. get_backup_list uses recursive glob,
-            #so the list can show files delete can't reach without walking.
+            #Native saves can be nested in subdirs, walk to find them same as restore backup does, get backup list uses recursive glob so the list can show files delete can not reach
             save_path = recipe.get("native_save_path", "")
             native_dir = os.path.expanduser(f"~/Documents/server_data/{server_id}/{save_path}")
             if os.path.exists(native_dir):
@@ -576,9 +555,7 @@ class DockerManager:
             target_client = self._get_client(server_id)
             container = self._get_container_safe(target_client, server_id)
 
-            #==========================================
-            #1. LUNKSERVER TARBALLS
-            #==========================================
+            #Lunkserver tarballs
             if backup_type == "Lunkserver Backup":
                 if container and container.status in ['running', 'restarting']:
                     container.stop(timeout=15)
@@ -594,13 +571,11 @@ class DockerManager:
                     container.start()
                 return {"status": "success", "message": f"{filename} restored successfully!"}
 
-            #==========================================
-            #2. NATIVE GAME SAVES
-            #==========================================
+            #Native game saves
             if game_type in ["factorio", "satisfactory"]:
                 save_path = recipe.get("native_save_path", "")
                 native_dir = os.path.expanduser(f"~/Documents/server_data/{server_id}/{save_path}")
-                #Find the backup file while the server is STILL running.
+                #Find the backup file while the server is still running
                 target_path = None
                 for root, dirs, files in os.walk(native_dir):
                     if filename in files:
@@ -609,15 +584,12 @@ class DockerManager:
                 if not target_path:
                     return {"status": "error", "message": f"Could not find {filename} on the disk."}
 
-                #------------------------------------------
-                #FACTORIO (the pre-stash overwrite trick)
-                #------------------------------------------
+                #Factorio pre stash overwrite trick
                 if game_type == "factorio":
                     env_vars = recipe.get("env", {})
                     save_name = env_vars.get("SAVE_NAME", "save")
                     final_save = os.path.join(native_dir, f"{save_name}.zip")
-                    #Stash a copy of the backup BEFORE stopping the container
-                    #(stopping generates an unwanted Exit Save that would overwrite).
+                    #Stash a copy of the backup before stopping the container, stopping generates an unwanted exit save that would overwrite
                     stash_path = os.path.join(native_dir, "restore_stash.tmp")
                     shutil.copy2(target_path, stash_path)
                     if container and container.status in ['running', 'restarting']:
@@ -632,16 +604,14 @@ class DockerManager:
                         container.start()
                     return {"status": "success", "message": f"{filename} safely restored!"}
 
-                #------------------------------------------
-                #SATISFACTORY (the archive shield)
-                #------------------------------------------
+                #Satisfactory archive shield
                 if game_type == "satisfactory":
                     if container and container.status in ['running', 'restarting']:
                         container.stop(timeout=60)
                     archive_dir = os.path.join(native_dir, "archived_autosaves")
                     os.makedirs(archive_dir, exist_ok=True)
                     ext = recipe.get("native_save_ext", "")
-                    #Move everything out of the way first.
+                    #Move everything out of the way first
                     for root, dirs, files in os.walk(native_dir):
                         if root == archive_dir:
                             continue
@@ -666,9 +636,7 @@ class DockerManager:
                         container.start()
                     return {"status": "success", "message": "Backup copied! Open Satisfactory -> Server Manager -> Manage Saves, and load 'RestoredSave'."}
 
-            #==========================================
-            #3. FALLBACK
-            #==========================================
+            #Fallback
             if container:
                 if container.status in ['running', 'restarting']:
                     container.stop(timeout=15)
@@ -696,7 +664,7 @@ class DockerManager:
             mods_dir = os.path.expanduser(f"~/Documents/server_data/{server_id}/mods")
             os.makedirs(mods_dir, exist_ok=True)
             target_path = os.path.join(mods_dir, filename)
-            #Modrinth CDN requires a unique User-Agent or it 403s.
+            #Modrinth CDN requires a unique User Agent or it returns 403
             req = urllib.request.Request(download_url, headers={'User-Agent': 'Lunkman/LunkServerManager/1.0.0'})
             with urllib.request.urlopen(req, timeout=60) as response, open(target_path, 'wb') as out_file:
                 out_file.write(response.read())
