@@ -1207,6 +1207,19 @@ SERVER_RECIPES = {
         "env": {},
         "ram_limit": "512mb",
         "description": "Discord bot companion for fleet status + Lunkflix leaderboards"
+    },
+
+    "rag-demo": {
+        "name": "RAG Demo",
+        "game_type": "utility",
+        "image": "rag-demo:latest",
+        "ports": {"8501/tcp": 8501},
+        "client_port": 8501,
+        "container_path": "/data",
+        "command_template": "echo 'RAG Demo runs via Web UI'",
+        "env": {},
+        "ram_limit": "2g",
+        "description": "DeployHub RAG support bot for internship demo"
     }
 }
 
