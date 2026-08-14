@@ -944,6 +944,32 @@ SERVER_RECIPES = {
         ]
     },
 
+    "remux": {
+        "name": "Remux Media Server",
+        "game_type": "media",
+        "game_version": "latest",
+        "image": "ghcr.io/lostb1t/remux:latest",
+        "backup_excludes": ["torrents", "logs"],
+        "ports": {
+            "3000/tcp": 8096
+        },
+        "client_port": 8096,
+        "container_path": "/data",
+        "command_template": "echo 'Remux does not support native CLI commands. Manage via the Web UI.'",
+        "env": {
+            "TZ": "America/Chicago"
+        },
+        "ram_limit": "4g",
+        "description": "Jellyfin compatible experiment, takes over port 8096",
+        "devices": [
+            "/dev/dri:/dev/dri"
+        ],
+        "group_add": [
+            "992",
+            "44"
+        ]
+    },
+
     "wizarr": {
         "name": "Wizarr Invite System",
         "game_type": "utility",
