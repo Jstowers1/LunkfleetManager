@@ -60,9 +60,11 @@ jobs:
       FACTORIO_USERNAME: ${{ secrets.FACTORIO_USERNAME }}
       FACTORIO_TOKEN: ${{ secrets.FACTORIO_TOKEN }}
     steps:
-      - uses: tailscale/github-action@v2
+      - uses: tailscale/github-action@v3
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
 
       - name: Deploy backend to Lunkserver
         uses: appleboy/ssh-action@v1.2.0
@@ -110,9 +112,11 @@ jobs:
       ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
       GUEST_TOKEN: ${{ secrets.GUEST_TOKEN }}
     steps:
-      - uses: tailscale/github-action@v2
+      - uses: tailscale/github-action@v3
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
 
       - name: Deploy frontend to VPS
         uses: appleboy/ssh-action@v1.2.0
@@ -148,9 +152,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: tailscale/github-action@v2
+      - uses: tailscale/github-action@v3
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTHKEY }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
 
       - name: Copy satellite-backend to VPS
         uses: appleboy/scp-action@v1.0.0
