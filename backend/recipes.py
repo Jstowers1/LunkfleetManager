@@ -887,20 +887,17 @@ def load_hidden_recipes():
         return set()
 
 def save_hidden_recipes(hidden):
-    """Persist the hidden list and rebuild SERVER_RECIPES so the sidebar updates immediately."""
+    """Persist the hidden list and rebuild discovered recipes so the sidebar updates immediately."""
     os.makedirs(os.path.dirname(HIDDEN_RECIPES_PATH), exist_ok=True)
     with open(HIDDEN_RECIPES_PATH, "w") as f:
         json.dump(sorted(hidden), f)
+    #Pop all auto recipes first, discovery skips names already in SERVER_RECIPES so a rescan against the live dict would drop every remaining auto entry
+    for sid in [s for s, r in SERVER_RECIPES.items() if r.get("_auto")]:
+        SERVER_RECIPES.pop(sid, None)
     try:
-        discovered = discover_containers()
+        SERVER_RECIPES.update(discover_containers())
     except Exception:
-        discovered = {}
-    for sid in list(SERVER_RECIPES):
-        recipe = SERVER_RECIPES[sid]
-        if recipe.get("_auto"):
-            if sid in hidden or sid not in discovered:
-                SERVER_RECIPES.pop(sid, None)
-    SERVER_RECIPES.update(discovered)
+        pass
 
 def discover_containers():
     """Scan local Docker for running/stopped containers not in SERVER_RECIPES.
