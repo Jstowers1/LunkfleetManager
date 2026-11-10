@@ -6,6 +6,7 @@ CF_API_KEY = os.environ.get("CF_API_KEY", "")
 
 #Path to user created recipes loaded at import and on each CRUD call, hand written recipes stay in this file, user created ones live separately so git diffs stay clean
 USER_RECIPES_PATH = os.path.expanduser("~/Documents/server_data/user_recipes.json")
+HIDDEN_RECIPES_PATH = os.path.expanduser("~/Documents/server_data/hidden_recipes.json")
 
 #Templates for the add server picker, each has the correct image ports container path env vars and a ram default
 SERVER_TEMPLATES = {
@@ -877,6 +878,30 @@ def create_custom_recipe(server_id, name, image, ports, container_path="/data",
 _DISCOVERY_BLACKLIST_PREFIXES = ("hermes", "frpc", "frps", "network_frp")
 _DISCOVERY_BLACKLIST_IMAGES = ("nikolaik/python-nodejs",)
 
+def load_hidden_recipes():
+    """Container names hidden from the sidebar, list persisted to JSON."""
+    try:
+        with open(HIDDEN_RECIPES_PATH, "r") as f:
+            return set(json.load(f))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return set()
+
+def save_hidden_recipes(hidden):
+    """Persist the hidden list and rebuild SERVER_RECIPES so the sidebar updates immediately."""
+    os.makedirs(os.path.dirname(HIDDEN_RECIPES_PATH), exist_ok=True)
+    with open(HIDDEN_RECIPES_PATH, "w") as f:
+        json.dump(sorted(hidden), f)
+    try:
+        discovered = discover_containers()
+    except Exception:
+        discovered = {}
+    for sid in list(SERVER_RECIPES):
+        recipe = SERVER_RECIPES[sid]
+        if recipe.get("_auto"):
+            if sid in hidden or sid not in discovered:
+                SERVER_RECIPES.pop(sid, None)
+    SERVER_RECIPES.update(discovered)
+
 def discover_containers():
     """Scan local Docker for running/stopped containers not in SERVER_RECIPES.
     Returns dict of auto-generated recipes keyed by container name."""
@@ -891,6 +916,8 @@ def discover_containers():
         if name is None:
             continue
         if name.startswith(_DISCOVERY_BLACKLIST_PREFIXES) or name in SERVER_RECIPES:
+            continue
+        if name in load_hidden_recipes():
             continue
         image = c.attrs.get("Config", {}).get("Image", "")
         if image and image.startswith(_DISCOVERY_BLACKLIST_IMAGES):

@@ -12,7 +12,7 @@ from docker_manager import DockerManager
 from recipes import (
     SERVER_RECIPES, SERVER_TEMPLATES,
     create_from_template, create_custom_recipe, delete_user_recipe,
-    get_template_for_image, CF_API_KEY, save_user_recipe,
+    get_template_for_image, CF_API_KEY, save_user_recipe, save_hidden_recipes, load_hidden_recipes,
 )
 from stats_fetcher import StatsFetcher
 import urllib.request
@@ -666,6 +666,9 @@ def create_server(payload: CreateServerPayload, role: str = Depends(require_admi
         recipe, err = create_from_template(template_key, server_id,
                                             name=payload.name or None,
                                             description=payload.description)
+        if recipe and payload.env:
+            recipe["env"].update(payload.env)
+            save_user_recipe(server_id, recipe)
         #Apply the same client port override to the recipe so the container binds the user port not the template default
         if not err and payload.client_port and payload.client_port != tmpl["client_port"]:
             default_cp = tmpl["client_port"]
@@ -844,6 +847,27 @@ def delete_server(server_id: str, role: str = Depends(require_admin)):
     update_frpc_tunnel()
     return {"status": "success", "message": f"Server '{server_id}' removed"}
 
+@app.post("/api/servers/{server_id}/hide")
+def hide_server(server_id: str, role: str = Depends(require_admin)):
+    """Hide an auto-discovered container from the sidebar, container stays untouched."""
+    recipe = SERVER_RECIPES.get(server_id)
+    if not recipe or not recipe.get("_auto"):
+        raise HTTPException(status_code=400, detail="Only auto-discovered containers can be hidden")
+    hidden = load_hidden_recipes()
+    hidden.add(server_id)
+    save_hidden_recipes(hidden)
+    docker_mgr._fleet_cache = None
+    return {"status": "success", "message": f"'{server_id}' hidden"}
+
+@app.post("/api/servers/{server_id}/unhide")
+def unhide_server(server_id: str, role: str = Depends(require_admin)):
+    """Unhide a container so discovery can pick it up again."""
+    hidden = load_hidden_recipes()
+    hidden.discard(server_id)
+    save_hidden_recipes(hidden)
+    docker_mgr._fleet_cache = None
+    return {"status": "success", "message": f"'{server_id}' unhidden"}
+
 @app.get("/api/fleet/groups")
 def get_fleet_groups():
     """Servers grouped by remote host for collapsable sidebar sections."""
@@ -869,11 +893,13 @@ def get_fleet_groups():
             else:
                 name = f"Remote ({ip})"
         if host_key not in groups:
-            groups[host_key] = {"name": name, "alias": alias, "servers": {}, "game_types": {}, "user_created": set()}
+            groups[host_key] = {"name": name, "alias": alias, "servers": {}, "game_types": {}, "user_created": set(), "auto": set()}
         if game_type:
             groups[host_key]["game_types"][server_id] = game_type
         if recipe.get("_user_created"):
             groups[host_key]["user_created"].add(server_id)
+        if recipe.get("_auto"):
+            groups[host_key]["auto"].add(server_id)
         groups[host_key]["servers"][server_id] = status
     #Drop fleet groups whose host is entirely offline
     groups = {k: g for k, g in groups.items()
@@ -881,6 +907,7 @@ def get_fleet_groups():
     #Convert sets to lists for JSON serialization
     for g in groups.values():
         g["user_created"] = list(g["user_created"])
+        g["auto"] = list(g["auto"])
     return groups
 
 @app.get("/api/system")

@@ -24,6 +24,7 @@
   let containerPath = $state('/data');
   let clientPort = $state('');
   let ramLimit = $state('0g');
+  let envJson = $state('');
   let startNow = $state(true);
 
   //Factorio map-gen ore tick presets (percent values, matching the smart-gui editor)
@@ -107,6 +108,9 @@
     containerPath = t.container_path;
     clientPort = String(t.client_port);
     ramLimit = t.ram_limit || '0g';
+    envJson = t.env && Object.keys(t.env).length
+      ? JSON.stringify(t.env, null, 2)
+      : '';
     resetGameOptions();
     if (t.game_type === 'factorio') {
       loadFactorioVersionLabels();
@@ -133,6 +137,7 @@
       containerPath = '/data';
       clientPort = '';
       ramLimit = '0g';
+      envJson = '';
       step = 2;
     }
   }
@@ -147,6 +152,7 @@
     containerPath = '/data';
     clientPort = '';
     ramLimit = '0g';
+    envJson = '';
     resetGameOptions();
     step = 2;
   }
@@ -366,6 +372,18 @@
       return;
     }
 
+    //Env overrides, JSON string field with defaults prefilled from the template
+    let parsedEnv = {};
+    if (envJson.trim()) {
+      try {
+        parsedEnv = JSON.parse(envJson);
+      } catch (e) {
+        error = 'Invalid JSON in env field';
+        step = 2;
+        return;
+      }
+    }
+
     const payload = {
       server_id: serverId,
       name: serverName,
@@ -375,7 +393,7 @@
       ports: parsedPorts,
       container_path: containerPath,
       client_port: clientPort ? parseInt(clientPort) : null,
-      env: {},
+      env: parsedEnv,
       ram_limit: ramLimit,
       start_now: startNow,
       game_options: buildGameOptions(),
@@ -554,6 +572,13 @@
         <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">RAM Limit</label>
         <input bind:value={ramLimit} placeholder="0g"
           class="w-full bg-[#111827] border border-gray-700 rounded-lg px-4 py-2 text-gray-200 text-sm font-mono focus:outline-none focus:border-gray-500" />
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-gray-500 mb-1">Env Vars (JSON)</label>
+        <textarea bind:value={envJson} rows="3"
+          class="w-full bg-[#111827] border border-gray-700 rounded-lg px-4 py-2 text-gray-200 text-sm font-mono focus:outline-none focus:border-gray-500"
+          placeholder={'{"KEY": "value"}'}></textarea>
+        <p class="text-xs text-gray-600 mt-1">Merged over the template defaults, edit passwords and tokens here</p>
       </div>
       {#if mode === 'custom'}
       <div>
